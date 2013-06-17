@@ -1,0 +1,27 @@
+Index: misc.fopro
+===================================================================
+--- misc.fopro	(revision 404)
++++ misc.fopro	(working copy)
+@@ -1,4 +1,4 @@
+-# 3.0.8
++# 3.1.8
+ 
+ [Proto]
+ ProtoId=41
+@@ -4545,3 +4545,16 @@
+ DisableEgg=1
+ Material=1
+ 
++[Proto]
++ProtoId=4343
++Type=5
++ScriptModule=box_with_a_surprise
++ScriptFunc=_BoxInit
++PicMap=art\items\geck.frm
++PicInv=art\inven\geck.frm
++Flags=402653214
++DisableEgg=1
++Weight=10000
++Cost=10000
++Material=1
++

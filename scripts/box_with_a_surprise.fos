@@ -1,0 +1,129 @@
+// Author: Tab10id
+// Реализует ящики при открытии которых в инвентаре появляется случайный лут
+#include "_macros.fos"
+#include "_msgstr.fos"
+
+#define BOX_WEAPON_HIGH       ( 0 )
+#define BOX_SEX_TOYS          ( 1 )
+#define BOX_MAX               ( 2 )
+
+#define STR_BOX_WITHOUT_LOOT  ( 700 )
+#define STR_BOX_WITH_LOOT     ( 701 )
+
+class CBoxItem {
+    uint16 PId;
+    uint16 Chance;
+    uint16 Count;
+}
+class CBoxItemsGroup {
+    CBoxItem[] BItem;
+    uint8 ChanceGroup;
+    CBoxItemsGroup@ AddPid(uint16 pid, uint8 chance, uint16 count)
+    {
+        BItem.grow(1);
+        BItem.last().PId = pid;
+        BItem.last().Chance = chance;
+        BItem.last().Count = count;
+        return this;
+    }
+}
+class CSurpriseBox {
+    CBoxItemsGroup[] Groups;
+    CBoxItemsGroup@ AddGroup(uint8 chanceGroup)
+    {
+        Groups.grow( 1 );
+        Groups.last().ChanceGroup = chanceGroup;
+        return Groups.last();
+    }
+}
+
+CSurpriseBox[] SurpriseBoxes(BOX_MAX);
+
+void SurpriseBoxesInit()
+{
+    CSurpriseBox@ box = @SurpriseBoxes[BOX_WEAPON_HIGH];
+    box.AddGroup(25).AddPid( PID_FLAMER, 100, 1 ).AddPid( PID_BOTTLE_CAPS, 100, Random( 100, 200 ) );
+    box.AddGroup(45).AddPid( PID_IMPROVED_FLAMETHROWER, 100, 1 );
+    box.AddGroup(55).AddPid( PID_ROCKET_LAUNCHER, 100, 1 );
+    box.AddGroup(70).AddPid( PID_MINIGUN, 100, 1 );
+    box.AddGroup(85).AddPid( PID_M60, 100, 1 );
+    box.AddGroup(90).AddPid( PID_LIGHT_SUPPORT_WEAPON, 100, 1 );
+    box.AddGroup(94).AddPid( PID_AVENGER_MINIGUN, 100, 1 );
+    box.AddGroup(97).AddPid( PID_VINDICATOR_MINIGUN, 100, 1 );
+    box.AddGroup(99).AddPid( PID_BOZAR, 100, 1 );
+    box.AddGroup(100).AddPid( PID_METAL_STORM, 100, 1 );
+
+    @box = @SurpriseBoxes[BOX_SEX_TOYS];
+    box.AddGroup(25).AddPid( PID_BLOW_UP_DOLL, 100, 1 ).AddPid( PID_BALL_GAG, 50, 1 );
+    box.AddGroup(50).AddPid( PID_POPPED_BLOW_UP_DOLL, 100, 1 ).AddPid( PID_BALL_GAG, 100, 1 );
+}
+
+void _BoxInit(Item& box, bool firstTime)
+{
+    uint16 boxNum = Random( 0, BOX_MAX-1 );
+    box.Val0 = boxNum;
+    OpenEventSet(box);
+}
+
+void OpenEventSet(Item& box)
+{
+    box.SetEvent(ITEM_EVENT_USE, "_TryOpenBox");
+}
+
+bool _TryOpenBox( Item& box, Critter& cr, Critter@ onCritter, Item@ onItem, Scenery@ onScenery )
+{
+    if( box.Val2 == 0 ) // Не заперт
+    {
+        BoxOpen( cr, box );
+        return true;
+    }
+    return false;
+}
+
+void BoxOpen(Critter& cr, Item& box)
+{
+    int8 gNum=-1;
+    uint8 roll = Random( 0, 100 );
+    for( int i = 0, n = SurpriseBoxes[box.Val0].Groups.length(); i < n-1; i++ )
+    {
+        if ( ( i == 0 ) and ( roll <= SurpriseBoxes[box.Val0].Groups[0].ChanceGroup ) )
+        {
+            gNum = 0;
+            break;
+        }
+        if ( ( roll > SurpriseBoxes[box.Val0].Groups[i].ChanceGroup ) && ( roll <= SurpriseBoxes[box.Val0].Groups[i+1].ChanceGroup ) ) {
+            gNum = i+1;
+            break;
+        }
+    }
+    if( gNum == -1 )
+    {
+        cr.SayMsg( SAY_NETMSG, TEXTMSG_TEXT, STR_BOX_WITHOUT_LOOT );
+    }
+    else
+    {
+        GetItemsFromBox(cr, SurpriseBoxes[box.Val0].Groups[gNum]);
+    }
+    DeleteItem(box);
+}
+
+void GetItemsFromBox(Critter& cr, CBoxItemsGroup& group)
+{
+    bool noLoot = true;
+    for (uint8 i = 0, n = group.BItem.length(); i < n; i++ )
+    {
+        if( Random( 1, 100 ) <= group.BItem[i].Chance )
+        {
+            noLoot = false;
+            cr.AddItem(group.BItem[i].PId,group.BItem[i].Count);
+        }
+    }
+    if( noLoot )
+    {
+        cr.SayMsg( SAY_NETMSG, TEXTMSG_TEXT, STR_BOX_WITHOUT_LOOT );
+    }
+    else
+    {
+        cr.SayMsg( SAY_NETMSG, TEXTMSG_TEXT, STR_BOX_WITH_LOOT );
+    }
+}
