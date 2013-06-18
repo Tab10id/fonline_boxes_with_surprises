@@ -1,0 +1,22 @@
+Index: main.fos
+===================================================================
+--- main.fos	(revision 404)
++++ main.fos	(working copy)
+@@ -12,6 +12,7 @@
+ import bool UseItemOnCar( Critter& cr, Item& car, Item& item ) from "car";
+ import bool UseSkillOnCar( Critter& cr, Item& car, int skill ) from "car";
+ import void WorldmapInit() from "worldmap";
++import void SurprizeBoxesInit() from "box_with_a_surprise";
+ import void SetStartLocation( Critter& cr ) from "replication";
+ import void SetReplicationTime( Critter& cr ) from "replication";
+ import void ReplicateCritter( Critter& cr ) from "replication";
+@@ -141,6 +142,9 @@
+ 
+     // Global map initialization
+     WorldmapInit();
++    
++    // Random boxes generations
++    SurprizeBoxesInit();
+ 
+     // Caravans initialization
+     CaravansInit();
