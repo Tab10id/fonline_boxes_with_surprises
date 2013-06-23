@@ -1,14 +1,24 @@
 // Author: Tab10id
 // Реализует ящики при открытии которых в инвентаре появляется случайный лут
+// Val0 - определяет должен ли номер набора выбираться случайно
+// Val1 - определяет номер набора (0 - случайный)
+// Val2 - Номер ключа
+// Val3 - определяет заперт ли ящик (аналог LockerCondition, но при нуле считается что замка нет)
+// Val4 - аналог LockerComplexity для контейнеров
 #include "_macros.fos"
 #include "_msgstr.fos"
 
-#define BOX_WEAPON_HIGH       ( 0 )
-#define BOX_SEX_TOYS          ( 1 )
-#define BOX_MAX               ( 2 )
+#define BOX_WEAPON_HIGH               ( 0 )
+#define BOX_SEX_TOYS                  ( 1 )
+#define BOX_CLOSED_WITH_JET           ( 2 )
+#define BOX_CLOSED_WITH_BOTTLE_CAPS   ( 3 )
+#define BOX_MAX                       ( 4 )
 
-#define STR_BOX_WITHOUT_LOOT  ( 700 )
-#define STR_BOX_WITH_LOOT     ( 701 )
+#define STR_BOX_WITHOUT_LOOT          ( 700 )
+#define STR_BOX_WITH_LOOT             ( 701 )
+#define STR_BOX_NEED_KEY              ( 702 )
+
+import bool IsKeyAviable( Critter& cr, uint lockerId ) from "lockers";
 
 class CBoxItem {
     uint16 PId;
@@ -29,15 +39,24 @@ class CBoxItemsGroup {
 }
 class CSurpriseBox {
     CBoxItemsGroup[] Groups;
-    CBoxItemsGroup@ AddGroup(uint8 chanceGroup)
+    uint16 LockCondition = LOCKER_ISOPEN;
+    uint16 LockComplexity = 0;
+    uint KeyNum = 0;
+    CBoxItemsGroup@ AddGroup( uint8 chanceGroup )
     {
         Groups.grow( 1 );
         Groups.last().ChanceGroup = chanceGroup;
         return Groups.last();
     }
+    void SetLock( uint16 lockCondition, uint16 lockComplexity, int keyNum = 0 )
+    {
+        LockCondition = lockCondition;
+        LockComplexity = LockComplexity;
+        KeyNum = keyNum;
+    }
 }
 
-CSurpriseBox[] SurpriseBoxes(BOX_MAX);
+CSurpriseBox[] SurpriseBoxes( BOX_MAX );
 
 void SurpriseBoxesInit()
 {
@@ -56,18 +75,33 @@ void SurpriseBoxesInit()
     @box = @SurpriseBoxes[BOX_SEX_TOYS];
     box.AddGroup(25).AddPid( PID_BLOW_UP_DOLL, 100, 1 ).AddPid( PID_BALL_GAG, 50, 1 );
     box.AddGroup(50).AddPid( PID_POPPED_BLOW_UP_DOLL, 100, 1 ).AddPid( PID_BALL_GAG, 100, 1 );
+
+    @box = @SurpriseBoxes[BOX_CLOSED_WITH_JET];
+    box.AddGroup(100).AddPid( PID_JET, 100, 20 );
+    box.SetLock( LOCKER_LOCKED, 25, 3000 );
+    
+    @box = @SurpriseBoxes[BOX_CLOSED_WITH_BOTTLE_CAPS];
+    box.AddGroup(100).AddPid( PID_BOTTLE_CAPS, 100, 10000 );
+    box.SetLock( LOCKER_NOOPEN, 300, 42 );
 }
 
 void _BoxInit(Item& box, bool firstTime)
 {
-    uint16 boxNum = Random( 0, BOX_MAX-1 );
-    box.Val0 = boxNum;
+    if( box.Val0 == 0 ) {
+        uint16 boxNum = Random( 0, BOX_MAX-1 );
+        box.Val1 = boxNum;
+    }
+    box.Val2 = SurpriseBoxes[box.Val1].KeyNum;
+    box.Val3 = SurpriseBoxes[box.Val1].LockCondition;
+    box.Val4 = SurpriseBoxes[box.Val1].LockComplexity;
+    box.Update();
     OpenEventSet(box);
 }
 
 void OpenEventSet(Item& box)
 {
     box.SetEvent(ITEM_EVENT_USE, "_TryOpenBox");
+    box.SetEvent(ITEM_EVENT_SKILL, "_TryCrackBox");
 }
 
 bool _TryOpenBox( Item& box, Critter& cr, Critter@ onCritter, Item@ onItem, Scenery@ onScenery )
@@ -77,6 +111,74 @@ bool _TryOpenBox( Item& box, Critter& cr, Critter@ onCritter, Item@ onItem, Scen
         BoxOpen( cr, box );
         return true;
     }
+    else {
+        if( IsKeyAviable(cr, box.Val2 ) )
+        {
+            BoxOpen( cr, box );
+            return true;
+        }
+    }
+    cr.SayMsg( SAY_NETMSG, TEXTMSG_TEXT, STR_BOX_NEED_KEY );
+    return true;
+}
+
+bool _TryCrackBox( Item& box, Critter& cr, int skill )
+{
+    if( skill == SK_LOCKPICK )
+    {
+        // NoOpen
+        if( FLAG( box.Val3, LOCKER_NOOPEN ) )
+        {
+            cr.SayMsg( SAY_NETMSG, TEXTMSG_GAME, STR_USE_NOTHING );
+            return true;
+        }
+
+        if( cr.Timeout[ TO_SK_LOCKPICK ] > 0 )
+        {
+            cr.SayMsg( SAY_NETMSG, TEXTMSG_GAME, STR_SKILL_WEARINESS );
+            return true;
+        }
+
+        if( FLAG( box.Val3, LOCKER_ISOPEN ) )
+        {
+            cr.SayMsg( SAY_NETMSG, TEXTMSG_GAME, STR_USE_NOTHING );
+            return true;
+        }
+
+        int    base = cr.Skill[ SK_LOCKPICK ] - box.Val4;
+        uint8  mode = 0;
+        uint16 activePid = cr.GetSlotProto( SLOT_HAND1, mode ).ProtoId;
+        if( activePid == PID_LOCKPICKS )
+        {
+            base += 25;
+            if( Random( 0, 30 ) == 0 )
+                cr.DeleteItem( PID_LOCKPICKS, 1 );
+        }
+        else if( activePid == PID_EXP_LOCKPICK_SET )
+        {
+            base += 50;
+            if( Random( 0, 30 ) == 0 )
+                cr.DeleteItem( PID_EXP_LOCKPICK_SET, 1 );
+        }
+        // TODO: PID_ELECTRONIC_LOCKPICKS, PID_ELEC_LOCKPICK_MKII
+
+        base = CLAMP( base, 0, 95 );
+        if( base >= Random( 1, 100 ) )
+        {
+            BoxOpen( cr, box );
+            cr.StatBase[ ST_EXPERIENCE ] += 50;
+            cr.AddScore( SCORE_CRACKER, 1 );
+        }
+        else
+        {
+            cr.SayMsg( SAY_NETMSG, TEXTMSG_GAME, STR_SKILL_LOCKPICK_FAIL );
+        }
+        cr.TimeoutBase[ TO_SK_LOCKPICK ] = LOCKPICK_TIMEOUT( cr );
+    }
+    else
+    {
+        cr.SayMsg( SAY_NETMSG, TEXTMSG_GAME, STR_USE_NOTHING );
+    }
     return false;
 }
 
@@ -84,16 +186,19 @@ void BoxOpen(Critter& cr, Item& box)
 {
     int8 gNum=-1;
     uint8 roll = Random( 0, 100 );
-    for( int i = 0, n = SurpriseBoxes[box.Val0].Groups.length(); i < n-1; i++ )
+    for( int i = 0, n = SurpriseBoxes[box.Val1].Groups.length(); i < n; i++ )
     {
-        if ( ( i == 0 ) and ( roll <= SurpriseBoxes[box.Val0].Groups[0].ChanceGroup ) )
+        if ( ( i == 0 ) and ( roll <= SurpriseBoxes[box.Val1].Groups[0].ChanceGroup ) )
         {
             gNum = 0;
             break;
         }
-        if ( ( roll > SurpriseBoxes[box.Val0].Groups[i].ChanceGroup ) && ( roll <= SurpriseBoxes[box.Val0].Groups[i+1].ChanceGroup ) ) {
-            gNum = i+1;
-            break;
+        if( i < ( n-1 ) )
+        {
+            if ( ( roll > SurpriseBoxes[box.Val1].Groups[i].ChanceGroup ) && ( roll <= SurpriseBoxes[box.Val1].Groups[i+1].ChanceGroup ) ) {
+                gNum = i+1;
+                break;
+            }
         }
     }
     if( gNum == -1 )
@@ -102,7 +207,7 @@ void BoxOpen(Critter& cr, Item& box)
     }
     else
     {
-        GetItemsFromBox(cr, SurpriseBoxes[box.Val0].Groups[gNum]);
+        GetItemsFromBox(cr, SurpriseBoxes[box.Val1].Groups[gNum]);
     }
     DeleteItem(box);
 }
@@ -110,7 +215,7 @@ void BoxOpen(Critter& cr, Item& box)
 void GetItemsFromBox(Critter& cr, CBoxItemsGroup& group)
 {
     bool noLoot = true;
-    for (uint8 i = 0, n = group.BItem.length(); i < n; i++ )
+    for( uint8 i = 0, n = group.BItem.length(); i < n; i++ )
     {
         if( Random( 1, 100 ) <= group.BItem[i].Chance )
         {

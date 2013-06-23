@@ -2,7 +2,7 @@ Index: FOTEXT.MSG
 ===================================================================
 --- FOTEXT.MSG	(revision 404)
 +++ FOTEXT.MSG	(working copy)
-@@ -206,6 +206,14 @@
+@@ -206,6 +206,15 @@
  Ла-ла-ла-ла ла-ла-лэй ла-ла-ли-ла-ла!}
  
  #
@@ -12,6 +12,7 @@ Index: FOTEXT.MSG
 +{700}{}{No loot... Sad..}
 +{700}{}{Case was filled with earth, apparently someone decided to make a joke. }
 +{701}{}{Cheers! Here something is!}
++{702}{}{Key needed}
 +
 +#
  # Den store house
